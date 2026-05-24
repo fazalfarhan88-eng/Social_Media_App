@@ -70,7 +70,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     final profile = _profileCache[otherId];
                     
                     final name = profile?['username'] ?? 'User';
-                    final avatar = profile?['avatar_url'] ?? 'https://i.pravatar.cc/150?u=$otherId';
+                    final avatar = profile?['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
 
                     if (_searchQuery.isNotEmpty && !name.toLowerCase().contains(_searchQuery.toLowerCase())) {
                       return const SizedBox.shrink();

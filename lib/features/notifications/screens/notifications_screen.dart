@@ -74,7 +74,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   final postId = notification['post_id']?.toString();
                   
                   final profile = _profileCache[senderId];
-                  final avatar = profile?['avatar_url'] ?? 'https://i.pravatar.cc/150?u=$senderId';
+                  final avatar = profile?['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
                   final username = profile?['username'] ?? 'Someone';
                   final postImage = postId != null ? _postImageCache[postId] : null;
 

@@ -12,7 +12,6 @@ class ApiService {
     
     request.headers['X-API-Key'] = apiKey;
     request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-
     final response = await request.send();
 
     if (response.statusCode == 200) {

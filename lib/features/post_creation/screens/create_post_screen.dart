@@ -17,7 +17,7 @@ class CreatePostScreen extends StatefulWidget {
 }
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
-  File? _selectedImage;
+  XFile? _selectedImage;
   final TextEditingController _captionController = TextEditingController();
   bool _isPosting = false;
   bool _isGeneratingCaption = false;
@@ -27,7 +27,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (pickedFile != null) {
       setState(() {
-        _selectedImage = File(pickedFile.path);
+        _selectedImage = pickedFile; // XFile instance
       });
     }
   }
@@ -52,7 +52,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               onPressed: _isPosting ? null : () async {
                 setState(() => _isPosting = true);
                 try {
+                  if (kIsWeb) {
+                  final bytes = await _selectedImage!.readAsBytes();
+                  await SupabaseService.createPostFromBytes(bytes, _captionController.text);
+                } else {
                   await SupabaseService.createPost(_selectedImage!.path, _captionController.text);
+                }
                   if (mounted) Navigator.pop(context);
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
@@ -60,9 +65,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   if (mounted) setState(() => _isPosting = false);
                 }
               },
-              child: _isPosting 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text("Share", style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16)),
+                child: _isPosting 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text("Share", style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16)),
             ),
         ],
       ),
@@ -90,7 +95,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           borderRadius: BorderRadius.circular(28),
                           child: kIsWeb 
                               ? Image.network(_selectedImage!.path, fit: BoxFit.cover)
-                              : Image.file(_selectedImage!, fit: BoxFit.cover),
+                              : Image.file(File(_selectedImage!.path), fit: BoxFit.cover),
                         )
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -144,7 +149,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 future: SupabaseService.client.from('profiles').select().eq('id', SupabaseService.currentUser!.id).maybeSingle(),
                 builder: (context, snapshot) {
                   final profile = snapshot.data;
-                  final avatarUrl = profile?['avatar_url'] ?? 'https://i.pravatar.cc/150?u=me';
+                  final avatarUrl = profile?['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
                   final username = profile?['username'] ?? 'You';
 
                   return Row(

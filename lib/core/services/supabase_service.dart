@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -54,6 +55,15 @@ class SupabaseService {
         .from('posts_with_profiles')
         .stream(primaryKey: ['id'])
         .eq('user_id', userId)
+        .order('created_at', ascending: false);
+  }
+
+  /// Stream of posts that a user has shared (shared_posts table)
+  static Stream<List<Map<String, dynamic>>> streamUserSharedPosts(String userId) {
+    return client
+        .from('shared_posts_with_profiles')
+        .stream(primaryKey: ['id'])
+        .eq('sharer_id', userId)
         .order('created_at', ascending: false);
   }
   
@@ -141,6 +151,24 @@ class SupabaseService {
   }
 
   // Storage & Inserts
+  static Future<String> uploadImageBytes(Uint8List bytes, String bucket, String pathName) async {
+    await client.storage.from(bucket).uploadBinary(pathName, bytes);
+    return client.storage.from(bucket).getPublicUrl(pathName);
+  }
+
+  static Future<void> createPostFromBytes(Uint8List imageBytes, String caption, {List<dynamic>? objectsJson, Map<String, dynamic>? deepfakeResult}) async {
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${SupabaseService.currentUser?.id}.jpg';
+    final imageUrl = await uploadImageBytes(imageBytes, 'posts', fileName);
+    final response = await client.from('posts').insert({
+      'user_id': currentUser!.id,
+      'image_url': imageUrl,
+      'caption': caption,
+      if (objectsJson != null) 'objects_json': objectsJson,
+      if (deepfakeResult != null) 'deepfake_result': deepfakeResult,
+    }).select().single();
+    await _notifyFollowers(type: 'post', postId: response['id'].toString());
+  }
+
   static Future<String> uploadImage(String filePath, String bucket, String pathName) async {
     await client.storage.from(bucket).upload(pathName, File(filePath));
     return client.storage.from(bucket).getPublicUrl(pathName);
@@ -167,6 +195,52 @@ class SupabaseService {
 
   static Future<void> updatePost(dynamic postId, String caption) async {
     await client.from('posts').update({'caption': caption}).eq('id', postId).eq('user_id', currentUser!.id);
+  }
+
+  /// Share a post to the user's feed (creates a shared_posts record)
+  static Future<void> sharePostToFeed({
+    required String originalPostId,
+    required String originalUserId,
+    String caption = '',
+  }) async {
+    try {
+      await client.from('shared_posts').insert({
+        'sharer_id': currentUser!.id,
+        'original_post_id': originalPostId,
+        'original_user_id': originalUserId,
+        'caption': caption,
+      });
+      // Notify original post owner
+      await _createNotification(
+        receiverId: originalUserId,
+        type: 'share',
+        postId: originalPostId,
+      );
+    } catch (e) {
+      debugPrint('sharePostToFeed ERROR: $e');
+      rethrow;
+    }
+  }
+
+  /// Share a post as a status (story)
+  static Future<void> sharePostAsStatus({
+    required String originalPostId,
+    String? imageUrl,
+    String caption = '',
+  }) async {
+    try {
+      await client.from('stories').insert({
+        'user_id': currentUser!.id,
+        'image_url': imageUrl,
+        'content': caption.isNotEmpty ? 'Shared: $caption' : 'Shared a post',
+        'bg_color': '0xFF1a1a2e',
+        'original_post_id': originalPostId,
+        'expires_at': DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('sharePostAsStatus ERROR: $e');
+      rethrow;
+    }
   }
 
   static Future<void> upsertReaction(dynamic postId, String reactionType) async {
@@ -288,8 +362,28 @@ class SupabaseService {
     await _notifyFollowers(type: 'story', postId: response['id'].toString());
   }
 
-  static Future<void> deleteStory(String storyId) async {
-    await client.from('stories').delete().eq('id', storyId).eq('user_id', currentUser!.id);
+  static Future<void> deleteStory(dynamic storyId) async {
+    try {
+      // Try as int first (most common), fallback to string (uuid)
+      final dynamic parsedId = (storyId is int) ? storyId : (int.tryParse(storyId.toString()) ?? storyId.toString());
+      await client
+          .from('stories')
+          .delete()
+          .eq('id', parsedId)
+          .eq('user_id', currentUser!.id);
+      debugPrint('Story deleted: $parsedId');
+    } catch (e) {
+      debugPrint('deleteStory ERROR: $e');
+      rethrow;
+    }
+  }
+
+  static Future<int> getStoryViewersCount(String storyId) async {
+    final result = await client
+        .from('story_views')
+        .select('id')
+        .eq('story_id', storyId);
+    return result.length;
   }
 
   static Future<Map<String, dynamic>> fetchProfile(String userId) async {

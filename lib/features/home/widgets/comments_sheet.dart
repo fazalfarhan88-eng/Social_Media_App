@@ -97,7 +97,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                     final userId = comment['user_id'];
                     final profile = _profileCache[userId];
                     final String username = profile?['username'] ?? 'User';
-                    final String avatarUrl = profile?['avatar_url'] ?? 'https://i.pravatar.cc/150?u=$userId';
+                    final String avatarUrl = profile?['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
                     
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 20.0),

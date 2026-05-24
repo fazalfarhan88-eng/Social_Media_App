@@ -1,7 +1,7 @@
 import 'package:intl/intl.dart';
 
 class AppUtils {
-  static const String defaultAvatar = 'https://i.pravatar.cc/150?u=default';
+  static const String defaultAvatar = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
   
   static String formatTime(String? dateStr) {
     if (dateStr == null) return 'Just now';

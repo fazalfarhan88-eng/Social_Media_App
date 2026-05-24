@@ -32,7 +32,7 @@ class UserListTile extends StatelessWidget {
           ),
           child: CircleAvatar(
             radius: 24,
-            backgroundImage: NetworkImage(user['avatar_url'] ?? 'https://i.pravatar.cc/150?u=${user['id']}'),
+            backgroundImage: NetworkImage(user['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'),
           ),
         ),
         title: Text(user['username'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold)),

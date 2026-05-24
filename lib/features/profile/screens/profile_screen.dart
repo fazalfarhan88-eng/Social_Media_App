@@ -15,7 +15,7 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   Map<String, dynamic>? profileData;
   bool isLoading = true;
   bool _isFollowing = false;
@@ -23,11 +23,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _postsCount = 0;
   int _followersCount = 0;
   int _followingCount = 0;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _fetchProfile();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchProfile() async {
@@ -165,7 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isMe = SupabaseService.currentUser?.id == profileData?['id'];
     final username = profileData?['username'] ?? 'unknown';
     final fullName = profileData?['full_name'] ?? 'User';
-    final avatarUrl = profileData?['avatar_url'] ?? 'https://i.pravatar.cc/150?u=$username';
+    final avatarUrl = profileData?['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
 
     return Scaffold(
       appBar: AppBar(
@@ -308,10 +316,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
-              
-              // Posts Grid
-              _buildPostGrid(profileData!['id']),
+              const SizedBox(height: 24),
+
+              // Tab Bar: Posts | Shared
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  labelColor: theme.colorScheme.primary,
+                  unselectedLabelColor: Colors.grey,
+                  indicator: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  tabs: const [
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Iconsax.image, size: 18),
+                          SizedBox(width: 6),
+                          Text('Posts', style: TextStyle(fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Iconsax.share, size: 18),
+                          SizedBox(width: 6),
+                          Text('Shared', style: TextStyle(fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Tab Views
+              AnimatedBuilder(
+                animation: _tabController,
+                builder: (context, _) {
+                  if (_tabController.index == 0) {
+                    return _buildPostGrid(profileData!['id'], isSharedTab: false);
+                  } else {
+                    return _buildPostGrid(profileData!['id'], isSharedTab: true);
+                  }
+                },
+              ),
             ],
           ),
             ),
@@ -321,8 +381,132 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildPostGrid(String userId) {
+  Widget _buildPostGrid(String userId, {required bool isSharedTab}) {
     final theme = Theme.of(context);
+
+    if (isSharedTab) {
+      // Try to load shared posts; gracefully fallback if table doesn't exist yet
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: SupabaseService.client
+            .from('shared_posts')
+            .select('id, caption, created_at, original_post_id, original_user_id')
+            .eq('sharer_id', userId)
+            .order('created_at', ascending: false)
+            .then((rows) async {
+          // For each shared row, fetch original post image
+          final List<Map<String, dynamic>> enriched = [];
+          for (final row in rows) {
+            try {
+              final orig = await SupabaseService.client
+                  .from('posts_with_profiles')
+                  .select('image_url, caption, username, user_id')
+                  .eq('id', row['original_post_id'])
+                  .maybeSingle();
+              enriched.add({
+                ...row,
+                'image_url': orig?['image_url'],
+                'original_username': orig?['username'],
+                'original_caption': orig?['caption'],
+              });
+            } catch (_) {
+              enriched.add(row);
+            }
+          }
+          return enriched;
+        }),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(40),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                children: [
+                  Icon(Iconsax.share, size: 48, color: Colors.grey.withOpacity(0.4)),
+                  const SizedBox(height: 12),
+                  Text('Shared posts not available yet',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  Text('Run the Supabase SQL to enable this feature',
+                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                ],
+              ),
+            );
+          }
+          final posts = snapshot.data ?? [];
+          if (posts.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Column(
+                children: [
+                  Icon(Iconsax.share, size: 48, color: Colors.grey.withOpacity(0.4)),
+                  const SizedBox(height: 12),
+                  Text('No shared posts yet', style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            );
+          }
+          return GridView.builder(
+            padding: const EdgeInsets.all(12),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+            ),
+            itemCount: posts.length,
+            itemBuilder: (context, index) {
+              final post = posts[index];
+              return Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: post['image_url'] != null
+                        ? Image.network(
+                            post['image_url'],
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          )
+                        : Container(
+                            color: Colors.grey.withOpacity(0.2),
+                            child: const Icon(Iconsax.image, color: Colors.grey),
+                          ),
+                  ),
+                  // "Shared" badge overlay
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.share, size: 10, color: Colors.white),
+                          SizedBox(width: 3),
+                          Text('Shared', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    }
+
+    // Own posts tab
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: SupabaseService.streamUserPosts(userId),
       builder: (context, snapshot) {
@@ -396,3 +580,4 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
+

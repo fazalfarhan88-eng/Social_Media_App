@@ -61,7 +61,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       builder: (context, snapshot) {
         final friend = snapshot.data;
         final name = friend?['username'] ?? "Friend";
-        final avatar = friend?['avatar_url'] ?? 'https://i.pravatar.cc/150?u=${widget.chatId}';
+        final avatar = friend?['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
 
         return Scaffold(
           appBar: AppBar(
@@ -128,7 +128,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const CircleAvatar(radius: 40, backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=friend')),
+                        const CircleAvatar(radius: 40, backgroundImage: NetworkImage('https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y')),
                         const SizedBox(height: 16),
                         const Text("No messages yet", style: TextStyle(fontWeight: FontWeight.bold)),
                         const Text("Start the conversation!"),

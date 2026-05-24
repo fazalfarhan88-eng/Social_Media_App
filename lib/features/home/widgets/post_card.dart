@@ -8,6 +8,7 @@ import 'package:social_media_app/core/services/supabase_service.dart';
 import 'package:social_media_app/core/utils/auth_guard.dart';
 import 'package:social_media_app/features/home/widgets/comments_sheet.dart';
 import 'package:social_media_app/features/home/widgets/reaction_picker.dart';
+import 'package:social_media_app/features/home/widgets/share_post_sheet.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:social_media_app/core/services/api_service.dart';
@@ -419,9 +420,16 @@ class _PostCardState extends State<PostCard> {
                 // Share
                 InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Link copied!'), backgroundColor: Colors.blue),
-                  ),
+                  onTap: () {
+                    AuthGuard.executeWithAuth(context, () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => SharePostSheet(postData: widget.postData),
+                      );
+                    });
+                  },
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Icon(Iconsax.send_1, size: 20, color: theme.iconTheme.color),

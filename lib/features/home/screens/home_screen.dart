@@ -193,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: CircleAvatar(
-                        backgroundImage: NetworkImage(user['avatar_url'] ?? 'https://ui-avatars.com/api/?name=${user['username'] ?? 'U'}'),
+                        backgroundImage: NetworkImage(user['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'),
                       ),
                       title: Text(user['full_name'] ?? user['username'] ?? 'Unknown', maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text('@${user['username'] ?? ''}', style: const TextStyle(fontSize: 12)),
