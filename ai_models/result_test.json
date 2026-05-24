@@ -1,0 +1,52 @@
+[
+  {
+    "object": "dog",
+    "confidence": 87.9,
+    "bbox": {
+      "x1": 336,
+      "y1": 69,
+      "x2": 443,
+      "y2": 287
+    }
+  },
+  {
+    "object": "teddy bear",
+    "confidence": 78.0,
+    "bbox": {
+      "x1": 370,
+      "y1": 166,
+      "x2": 571,
+      "y2": 321
+    }
+  },
+  {
+    "object": "bird",
+    "confidence": 77.3,
+    "bbox": {
+      "x1": 258,
+      "y1": 99,
+      "x2": 331,
+      "y2": 205
+    }
+  },
+  {
+    "object": "dog",
+    "confidence": 57.6,
+    "bbox": {
+      "x1": 151,
+      "y1": 111,
+      "x2": 253,
+      "y2": 316
+    }
+  },
+  {
+    "object": "dog",
+    "confidence": 47.4,
+    "bbox": {
+      "x1": 64,
+      "y1": 170,
+      "x2": 158,
+      "y2": 319
+    }
+  }
+]
