@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:social_media_app/core/services/supabase_service.dart';
+import 'package:social_media_app/core/theme/theme_provider.dart';
 import 'package:social_media_app/core/widgets/custom_text_field.dart';
 import 'package:social_media_app/core/utils/app_utils.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,6 +20,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _bioController = TextEditingController();
   bool _isLoading = false;
   String? _avatarUrl;
+
+  final List<Color> _themeColors = [
+    const Color(0xFF6366F1), // Indigo (Default)
+    const Color(0xFFEC4899), // Pink
+    const Color(0xFFF59E0B), // Amber
+    const Color(0xFF10B981), // Emerald
+    const Color(0xFF3B82F6), // Blue
+    const Color(0xFF8B5CF6), // Violet
+    const Color(0xFFEF4444), // Red
+  ];
 
   @override
   void initState() {
@@ -45,8 +57,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     setState(() => _isLoading = true);
     try {
+      final bytes = await image.readAsBytes();
       final fileName = 'avatar_${SupabaseService.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final url = await SupabaseService.uploadImage(image.path, 'profiles', fileName);
+      final url = await SupabaseService.uploadImageBytes(bytes, 'profiles', fileName);
       await SupabaseService.updateProfile(avatarUrl: url);
       setState(() => _avatarUrl = url);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile picture updated!")));
@@ -58,10 +71,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text("Settings")),
       body: Center(
@@ -112,32 +126,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Iconsax.edit_2, size: 18),
             onTap: () => _showEditDialog("Update Bio", _bioController, "bio"),
           ),
-          ListTile(
-            leading: const Icon(Iconsax.security_safe),
-            title: const Text("Privacy & Security"),
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text("Privacy & Security"),
-                  content: const Text("Your data is secured with Supabase. We use Row Level Security to ensure only you can access your private data."),
-                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Got it"))],
-                ),
-              );
-            },
-          ),
           
           _buildSectionHeader(context, "Preferences"),
           ListTile(
             leading: const Icon(Iconsax.moon),
             title: const Text("Dark Mode"),
             trailing: Switch(
-              value: theme.brightness == Brightness.dark,
+              value: themeProvider.isDarkMode,
               onChanged: (val) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Theme switching is handled by system settings.")));
+                themeProvider.toggleTheme(val);
               },
             ),
           ),
+
+          // --- Custom Color Picker Section ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Iconsax.colorfilter, size: 22, color: Colors.grey),
+                    const SizedBox(width: 12),
+                    Text("Theme Color", style: theme.textTheme.bodyLarge),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 45,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _themeColors.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final color = _themeColors[index];
+                      final isSelected = themeProvider.primaryColor.value == color.value;
+                      return GestureDetector(
+                        onTap: () => themeProvider.setPrimaryColor(color),
+                        child: Container(
+                          width: 45,
+                          height: 45,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            border: isSelected
+                              ? Border.all(color: theme.brightness == Brightness.dark ? Colors.white : Colors.black, width: 3)
+                              : null,
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withOpacity(0.4),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              )
+                            ]
+                          ),
+                          child: isSelected
+                            ? const Icon(Icons.check, color: Colors.white, size: 20)
+                            : null,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           ListTile(
             leading: const Icon(Iconsax.notification),
             title: const Text("Notifications"),

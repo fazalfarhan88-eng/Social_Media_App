@@ -125,7 +125,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF2A0845), Color(0xFF6441A5)],
+            colors: [Color(0xFFC36ACF), Color(0xFFA59441)],
           ),
         ),
         child: SafeArea(
@@ -157,7 +157,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600, fontSize: 16),
                 ).animate().fadeIn(delay: 200.ms),
                 const SizedBox(height: 40),
-                
+
                 _buildInputGroup(),
 
                 const SizedBox(height: 32),

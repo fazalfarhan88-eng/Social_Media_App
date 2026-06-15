@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:social_media_app/core/services/supabase_service.dart';
 import 'package:social_media_app/core/utils/app_utils.dart';
 
@@ -104,9 +105,15 @@ class _CommentsSheetState extends State<CommentsSheet> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundImage: NetworkImage(avatarUrl),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                              context.push('/profile/$userId');
+                            },
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundImage: NetworkImage(avatarUrl),
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -115,7 +122,13 @@ class _CommentsSheetState extends State<CommentsSheet> {
                               children: [
                                 Row(
                                   children: [
-                                    Text(username, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    GestureDetector(
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        context.push('/profile/$userId');
+                                      },
+                                      child: Text(username, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
+                                    ),
                                     const SizedBox(width: 8),
                                     Text(
                                       AppUtils.formatTime(comment['created_at']), 
@@ -208,4 +221,3 @@ class _CommentsSheetState extends State<CommentsSheet> {
     }
   }
 }
-

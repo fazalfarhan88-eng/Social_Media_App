@@ -19,6 +19,31 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects {
+    val configureAction = Action<Project> {
+        val android = extensions.findByName("android")
+        if (android != null) {
+            try {
+                val getNamespace = android.javaClass.getMethod("getNamespace")
+                val setNamespace = android.javaClass.getMethod("setNamespace", String::class.java)
+                if (getNamespace.invoke(android) == null) {
+                    setNamespace.invoke(android, "com.example.${name.replace("-", "_")}")
+                }
+            } catch (e: Exception) {
+                // Ignore if namespace methods are not found
+            }
+        }
+    }
+
+    if (state.executed) {
+        configureAction.execute(this)
+    } else {
+        afterEvaluate {
+            configureAction.execute(project)
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

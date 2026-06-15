@@ -192,15 +192,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     final user = users[index];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
+                      onTap: () => context.push('/profile/${user['id']}'),
                       leading: CircleAvatar(
                         backgroundImage: NetworkImage(user['avatar_url'] ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'),
                       ),
                       title: Text(user['full_name'] ?? user['username'] ?? 'Unknown', maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text('@${user['username'] ?? ''}', style: const TextStyle(fontSize: 12)),
-                      trailing: TextButton(
-                        onPressed: () => context.push('/profile/${user['id']}'),
-                        child: const Text("View"),
-                      ),
+                      trailing: const Icon(Iconsax.arrow_right_3, size: 16, color: Colors.grey),
                     );
                   },
                 );

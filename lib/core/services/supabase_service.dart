@@ -175,18 +175,8 @@ class SupabaseService {
   }
 
   static Future<void> createPost(String imagePath, String caption, {List<dynamic>? objectsJson, Map<String, dynamic>? deepfakeResult}) async {
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${currentUser!.id}.jpg';
-    final imageUrl = await uploadImage(imagePath, 'posts', fileName);
-
-    final response = await client.from('posts').insert({
-      'user_id': currentUser!.id,
-      'image_url': imageUrl,
-      'caption': caption,
-      if (objectsJson != null) 'objects_json': objectsJson,
-      if (deepfakeResult != null) 'deepfake_result': deepfakeResult,
-    }).select().single();
-
-    await _notifyFollowers(type: 'post', postId: response['id'].toString());
+    final bytes = await File(imagePath).readAsBytes();
+    await createPostFromBytes(bytes, caption, objectsJson: objectsJson, deepfakeResult: deepfakeResult);
   }
 
   static Future<void> deletePost(dynamic postId) async {
@@ -199,14 +189,17 @@ class SupabaseService {
 
   /// Share a post to the user's feed (creates a shared_posts record)
   static Future<void> sharePostToFeed({
-    required String originalPostId,
+    required dynamic originalPostId,
     required String originalUserId,
     String caption = '',
   }) async {
     try {
+      final intPostId = originalPostId is int 
+          ? originalPostId 
+          : int.tryParse(originalPostId.toString());
       await client.from('shared_posts').insert({
         'sharer_id': currentUser!.id,
-        'original_post_id': originalPostId,
+        'original_post_id': intPostId ?? originalPostId,
         'original_user_id': originalUserId,
         'caption': caption,
       });
@@ -214,7 +207,7 @@ class SupabaseService {
       await _createNotification(
         receiverId: originalUserId,
         type: 'share',
-        postId: originalPostId,
+        postId: intPostId ?? originalPostId,
       );
     } catch (e) {
       debugPrint('sharePostToFeed ERROR: $e');
@@ -224,17 +217,20 @@ class SupabaseService {
 
   /// Share a post as a status (story)
   static Future<void> sharePostAsStatus({
-    required String originalPostId,
+    required dynamic originalPostId,
     String? imageUrl,
     String caption = '',
   }) async {
     try {
+      final intPostId = originalPostId is int 
+          ? originalPostId 
+          : int.tryParse(originalPostId.toString());
       await client.from('stories').insert({
         'user_id': currentUser!.id,
         'image_url': imageUrl,
         'content': caption.isNotEmpty ? 'Shared: $caption' : 'Shared a post',
         'bg_color': '0xFF1a1a2e',
-        'original_post_id': originalPostId,
+        'original_post_id': intPostId ?? originalPostId,
         'expires_at': DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
       });
     } catch (e) {
@@ -344,11 +340,11 @@ class SupabaseService {
         .order('created_at', ascending: false);
   }
 
-  static Future<void> createStory({String? imagePath, String? content, String? bgColor}) async {
+  static Future<void> createStory({Uint8List? imageBytes, String? content, String? bgColor}) async {
     String? imageUrl;
-    if (imagePath != null) {
+    if (imageBytes != null) {
       final fileName = 'story_${DateTime.now().millisecondsSinceEpoch}_${currentUser!.id}.jpg';
-      imageUrl = await uploadImage(imagePath, 'stories', fileName);
+      imageUrl = await uploadImageBytes(imageBytes, 'stories', fileName);
     }
 
     final response = await client.from('stories').insert({

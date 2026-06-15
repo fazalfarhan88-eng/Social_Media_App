@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,7 +16,8 @@ class CreateStoryScreen extends StatefulWidget {
 
 class _CreateStoryScreenState extends State<CreateStoryScreen> {
   final _textController = TextEditingController();
-  File? _selectedImage;
+  XFile? _selectedImageFile;
+  Uint8List? _selectedImageBytes;
   bool _isLoading = false;
   String _selectedBgColor = '0xFF6C63FF'; // Default purple-ish
 
@@ -33,15 +34,17 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
       setState(() {
-        _selectedImage = File(pickedFile.path);
+        _selectedImageFile = pickedFile;
+        _selectedImageBytes = bytes;
         _textController.clear();
       });
     }
   }
 
   Future<void> _postStory() async {
-    if (_selectedImage == null && _textController.text.trim().isEmpty) {
+    if (_selectedImageBytes == null && _textController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add an image or text for your story')),
       );
@@ -52,9 +55,9 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
 
     try {
       await SupabaseService.createStory(
-        imagePath: _selectedImage?.path,
-        content: _selectedImage == null ? _textController.text.trim() : null,
-        bgColor: _selectedImage == null ? _selectedBgColor : null,
+        imageBytes: _selectedImageBytes,
+        content: _selectedImageBytes == null ? _textController.text.trim() : null,
+        bgColor: _selectedImageBytes == null ? _selectedBgColor : null,
       );
       if (mounted) {
         context.pop();
@@ -95,7 +98,7 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            if (_selectedImage != null) ...[
+            if (_selectedImageBytes != null) ...[
               Stack(
                 children: [
                   Container(
@@ -104,10 +107,11 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
                     width: double.infinity,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                      image: DecorationImage(
-                        image: kIsWeb 
-                            ? NetworkImage(_selectedImage!.path) as ImageProvider
-                            : FileImage(_selectedImage!),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.memory(
+                        _selectedImageBytes!,
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -119,7 +123,10 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
                       backgroundColor: Colors.black54,
                       child: IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => setState(() => _selectedImage = null),
+                        onPressed: () => setState(() {
+                          _selectedImageFile = null;
+                          _selectedImageBytes = null;
+                        }),
                       ),
                     ),
                   ),
@@ -202,8 +209,10 @@ class _CreateStoryScreenState extends State<CreateStoryScreen> {
                     final picker = ImagePicker();
                     final pickedFile = await picker.pickImage(source: ImageSource.camera);
                     if (pickedFile != null) {
+                      final bytes = await pickedFile.readAsBytes();
                       setState(() {
-                        _selectedImage = File(pickedFile.path);
+                        _selectedImageFile = pickedFile;
+                        _selectedImageBytes = bytes;
                         _textController.clear();
                       });
                     }

@@ -399,15 +399,20 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             try {
               final orig = await SupabaseService.client
                   .from('posts_with_profiles')
-                  .select('image_url, caption, username, user_id')
+                  .select('*')
                   .eq('id', row['original_post_id'])
                   .maybeSingle();
-              enriched.add({
-                ...row,
-                'image_url': orig?['image_url'],
-                'original_username': orig?['username'],
-                'original_caption': orig?['caption'],
-              });
+              if (orig != null) {
+                enriched.add({
+                  ...row,
+                  'original_post_data': orig,
+                  'image_url': orig['image_url'],
+                  'original_username': orig['username'],
+                  'original_caption': orig['caption'],
+                });
+              } else {
+                enriched.add(row);
+              }
             } catch (_) {
               enriched.add(row);
             }
@@ -462,43 +467,57 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             itemCount: posts.length,
             itemBuilder: (context, index) {
               final post = posts[index];
-              return Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: post['image_url'] != null
-                        ? Image.network(
-                            post['image_url'],
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                          )
-                        : Container(
-                            color: Colors.grey.withOpacity(0.2),
-                            child: const Icon(Iconsax.image, color: Colors.grey),
-                          ),
-                  ),
-                  // "Shared" badge overlay
-                  Positioned(
-                    top: 4,
-                    left: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.share, size: 10, color: Colors.white),
-                          SizedBox(width: 3),
-                          Text('Shared', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
-                        ],
+              final heroTag = 'shared_${post['id']}';
+              return GestureDetector(
+                onTap: () {
+                  if (post['original_post_data'] != null) {
+                    context.push('/home/post', extra: {
+                      'postData': post['original_post_data'],
+                      'heroTag': heroTag,
+                    });
+                  }
+                },
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: post['image_url'] != null
+                          ? Hero(
+                              tag: heroTag,
+                              child: Image.network(
+                                post['image_url'],
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                              ),
+                            )
+                          : Container(
+                              color: Colors.grey.withOpacity(0.2),
+                              child: const Icon(Iconsax.image, color: Colors.grey),
+                            ),
+                    ),
+                    // "Shared" badge overlay
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.share, size: 10, color: Colors.white),
+                            SizedBox(width: 3),
+                            Text('Shared', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               );
             },
           );
@@ -580,4 +599,3 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 }
-

@@ -3,23 +3,28 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:go_router/go_router.dart';
-import 'package:social_media_app/core/services/supabase_service.dart';
-import 'package:social_media_app/core/utils/auth_guard.dart';
 import 'package:social_media_app/features/home/widgets/comments_sheet.dart';
 import 'package:social_media_app/features/home/widgets/reaction_picker.dart';
 import 'package:social_media_app/features/home/widgets/share_post_sheet.dart';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:social_media_app/core/services/api_service.dart';
-
 import 'package:social_media_app/core/utils/app_utils.dart';
+import 'package:social_media_app/core/services/supabase_service.dart';
+import 'package:go_router/go_router.dart';
+import 'package:social_media_app/features/home/widgets/reactions_sheet.dart';
 
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> postData;
   final String? heroTag;
   final bool autoOpenComments;
-  const PostCard({Key? key, required this.postData, this.heroTag, this.autoOpenComments = false}) : super(key: key);
+  
+  const PostCard({
+    Key? key, 
+    required this.postData, 
+    this.heroTag,
+    this.autoOpenComments = false,
+  }) : super(key: key);
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -27,619 +32,401 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   bool isLiked = false;
-  bool showHeartAnim = false;
   String currentReaction = '';
 
   // AI state
-  bool _isDetecting = false;
-  bool _isAnalyzing = false;
+  bool _isAILoading = false;
   Map<String, dynamic>? _detectionResult;
   Map<String, dynamic>? _authenticityResult;
-
+  String? _aiCaption;
 
   @override
   void initState() {
     super.initState();
-    _fetchMyReaction();
     if (widget.autoOpenComments) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showComments();
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showComments());
     }
   }
 
-  Future<void> _fetchMyReaction() async {
-    final userId = SupabaseService.currentUser?.id;
-    if (userId == null) return;
-    
-    try {
-      final response = await SupabaseService.client
-          .from('reactions')
-          .select('reaction_type')
-          .eq('post_id', widget.postData['id'])
-          .eq('user_id', userId)
-          .maybeSingle();
-      
-      if (response != null && mounted) {
-        setState(() {
-          currentReaction = response['reaction_type'] as String;
-          isLiked = true;
-        });
-      }
-    } catch (e) {
-      debugPrint("FETCH REACTION ERROR: $e");
-    }
-  }
-
-  void handleReaction(String reaction) {
-    AuthGuard.executeWithAuth(context, () {
-      if (currentReaction == reaction) {
-        // Remove reaction if clicking the same one again
-        setState(() {
-          isLiked = false;
-          currentReaction = '';
-        });
-        SupabaseService.removeReaction(widget.postData['id']);
-      } else {
-        setState(() {
-          isLiked = true;
-          currentReaction = reaction;
-        });
-        SupabaseService.upsertReaction(widget.postData['id'], reaction);
-      }
-    });
-  }
-
-  void handleDoubleTap() {
-    if (currentReaction != 'like') handleReaction('like');
-    setState(() => showHeartAnim = true);
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      if (mounted) setState(() => showHeartAnim = false);
-    });
-  }
-
-
-
-  void showReactionsList() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return FutureBuilder<List<Map<String, dynamic>>>(
-          future: SupabaseService.client
-              .from('reactions_with_profiles')
-              .select()
-              .eq('post_id', widget.postData['id'])
-              .order('created_at', ascending: false),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-            final reactions = snapshot.data!;
-            if (reactions.isEmpty) return const Center(child: Text("No reactions yet."));
-
-            return ListView.builder(
-              itemCount: reactions.length,
-              itemBuilder: (context, index) {
-                final r = reactions[index];
-                String emoji = '👍';
-                if (r['reaction_type'] == 'love') emoji = '❤️';
-                if (r['reaction_type'] == 'haha') emoji = '😂';
-                if (r['reaction_type'] == 'sad') emoji = '😢';
-                if (r['reaction_type'] == 'angry') emoji = '😡';
-
-                return ListTile(
-                  leading: CircleAvatar(backgroundImage: NetworkImage(r['avatar_url'] ?? '')),
-                  title: Text(r['username'] ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  trailing: Text(emoji, style: const TextStyle(fontSize: 24)),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void showComments() {
+  void _showComments() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => CommentsSheet(postId: widget.postData['id']),
+      builder: (context) => CommentsSheet(postId: widget.postData['id']?.toString() ?? ''),
     );
   }
 
-  Future<String> _downloadImageToTemp(String url) async {
+  void _showShareSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SharePostSheet(postData: widget.postData),
+    );
+  }
+
+  void _showReactionsList() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ReactionsSheet(postId: widget.postData['id']?.toString() ?? ''),
+    );
+  }
+
+  Future<Uint8List> _downloadImageBytes(String url) async {
     final response = await http.get(Uri.parse(url));
-    final bytes = response.bodyBytes;
-    final file = File('${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}.jpg');
-    await file.writeAsBytes(bytes);
-    return file.path;
+    return response.bodyBytes;
   }
 
-  Future<void> _detectObjects() async {
-    setState(() {
-      _isDetecting = true;
-      _detectionResult = null;
-      _authenticityResult = null;
-    });
-    try {
-      final imageUrl = widget.postData['image_url'] ?? 'https://picsum.photos/500/500';
-      final tempPath = await _downloadImageToTemp(imageUrl);
-      final result = await ApiService.detectObjects(tempPath);
-      if (mounted) setState(() => _detectionResult = result);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('AI Error: $e')));
-    } finally {
-      if (mounted) setState(() => _isDetecting = false);
+  double _parseScore(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString()) ?? 0.0;
+  }
+
+  Future<void> _handleAiAction(String type) async {
+    // TOGGLE OFF: If what we clicked is already showing, remove it and stop
+    bool isCurrentlyShowing = false;
+    if (type == 'obj' && _detectionResult != null) isCurrentlyShowing = true;
+    if (type == 'fake' && _authenticityResult != null) isCurrentlyShowing = true;
+    if (type == 'caption' && _aiCaption != null) isCurrentlyShowing = true;
+    if (type == 'all' && (_detectionResult != null || _authenticityResult != null || _aiCaption != null)) isCurrentlyShowing = true;
+
+    if (type == 'clear' || isCurrentlyShowing) {
+      setState(() {
+        _isAILoading = false;
+        _detectionResult = null;
+        _authenticityResult = null;
+        _aiCaption = null;
+      });
+      return;
     }
-  }
 
-  Future<void> _analyzeAuthenticity() async {
+    // Standard Loading Start
     setState(() {
-      _isAnalyzing = true;
-      _authenticityResult = null;
+      _isAILoading = true;
       _detectionResult = null;
+      _authenticityResult = null;
+      _aiCaption = null;
     });
+
     try {
-      final imageUrl = widget.postData['image_url'] ?? 'https://picsum.photos/500/500';
-      final tempPath = await _downloadImageToTemp(imageUrl);
-      final result = await ApiService.detectDeepfake(tempPath);
-      final isReal = result['is_real'] == true;
-      final confidence = result['confidence'] != null ? (result['confidence'] * 100).toInt() : 0;
-      final double realPercent = result['real_percent']?.toDouble() ?? 
-          (isReal ? (result['confidence'] * 100).toDouble() : (100 - result['confidence'] * 100).toDouble());
-      final double aiPercent = result['ai_percent']?.toDouble() ?? 
-          (!isReal ? (result['confidence'] * 100).toDouble() : (100 - result['confidence'] * 100).toDouble());
-      
-      final formattedResult = {
-        'is_real': isReal,
-        'confidence': confidence,
-        'real_percent': realPercent,
-        'ai_percent': aiPercent,
-        'verdict': isReal ? 'Verdict: Real (Human Created)' : 'Verdict: AI Generated (Deepfake)',
-      };
-      
-      if (mounted) setState(() => _authenticityResult = formattedResult);
+      final imgUrl = widget.postData['image_url']?.toString() ?? '';
+      if (imgUrl.isEmpty) throw "Image source not found";
+
+      final imageBytes = await _downloadImageBytes(imgUrl);
+      Map<String, dynamic> res;
+
+      switch (type) {
+        case 'obj':
+          res = await ApiService.detectObjects(imageBytes);
+          setState(() {
+            _detectionResult = {
+              'objects': (res['objects'] as List?)?.map((e) => (e as Map)['label']?.toString() ?? 'Object').toList() ?? [],
+              'marked_image': res['marked_image']?.toString()
+            };
+          });
+          break;
+        case 'fake':
+          res = await ApiService.detectDeepfake(imageBytes);
+          setState(() {
+            final dynamic raw = res.containsKey('deepfake') ? res['deepfake'] : res;
+            _authenticityResult = (raw is Map) ? Map<String, dynamic>.from(raw) : null;
+          });
+          break;
+        case 'caption':
+          res = await ApiService.generateCaption(imageBytes);
+          setState(() => _aiCaption = res['caption']?.toString());
+          break;
+        case 'all':
+          res = await ApiService.processAll(imageBytes);
+          setState(() {
+            _detectionResult = {
+              'objects': (res['objects'] as List?)?.map((e) => (e as Map)['label']?.toString() ?? 'Object').toList() ?? [],
+              'marked_image': res['marked_image']?.toString()
+            };
+            final dynamic rawFake = res['deepfake'];
+            _authenticityResult = (rawFake is Map) ? Map<String, dynamic>.from(rawFake) : null;
+            _aiCaption = res['caption']?.toString();
+          });
+          break;
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('AI Error: $e')));
     } finally {
-      if (mounted) setState(() => _isAnalyzing = false);
+      if (mounted) setState(() => _isAILoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final String imageUrl = widget.postData['image_url'] ?? 'https://picsum.photos/500/500';
-    final String caption = widget.postData['caption'] ?? '';
-    final String avatarUrl = widget.postData['avatar_url'] ?? '${AppUtils.defaultAvatar}${widget.postData['user_id']}';
+    final String imageUrl = widget.postData['image_url']?.toString() ?? '';
+    final String markedImg = _detectionResult?['marked_image']?.toString() ?? '';
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 24, left: 12, right: 12),
+      margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          ListTile(
+            onTap: () {
+              final uid = widget.postData['user_id']?.toString() ?? '';
+              if (uid.isNotEmpty) {
+                context.push('/profile/$uid');
+              }
+            },
+            leading: CircleAvatar(
+              radius: 20,
+              backgroundImage: NetworkImage(widget.postData['avatar_url']?.toString() ?? AppUtils.defaultAvatar),
+            ),
+            title: Text(widget.postData['username']?.toString() ?? 'User', 
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            subtitle: Text(AppUtils.formatTime(widget.postData['created_at']?.toString()), 
+              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          ),
+          if (widget.postData['caption'] != null && widget.postData['caption'].toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12, top: 4),
+              child: Text(
+                widget.postData['caption']?.toString() ?? '',
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 15, height: 1.3),
+              ),
+            ),
+          
+          if (imageUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  children: [
+                    Hero(
+                      tag: widget.heroTag ?? (imageUrl.isNotEmpty ? imageUrl : UniqueKey().toString()),
+                      child: (markedImg.isNotEmpty)
+                          ? Image.memory(base64Decode(markedImg), 
+                              fit: BoxFit.cover, width: double.infinity, height: 380)
+                          : Image.network(imageUrl, fit: BoxFit.cover, width: double.infinity, height: 380),
+                    ),
+                    if (_isAILoading)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black26,
+                          child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: () => context.push('/profile/${widget.postData['user_id']}'),
-                  child: Hero(
-                    tag: 'avatar_${widget.postData['id']}',
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(colors: [theme.colorScheme.primary, theme.colorScheme.secondary]),
-                      ),
-                      child: CircleAvatar(
-                        radius: 22,
-                        backgroundImage: NetworkImage(avatarUrl),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.postData['username'] ?? "Anonymous",
-                        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      Row(
-                        children: [
-                          Text("Verified Creator", style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary)),
+                StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: SupabaseService.streamReactions(widget.postData['id'].toString()),
+                  builder: (context, snapshot) {
+                    final reactions = snapshot.data ?? [];
+                    final myId = SupabaseService.currentUser?.id;
+                    final myReaction = reactions.firstWhere(
+                      (r) => r['user_id'] == myId,
+                      orElse: () => <String, dynamic>{},
+                    );
+                    final String activeReaction = myReaction['reaction_type']?.toString() ?? '';
+                    
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ReactionPicker(
+                          currentReaction: activeReaction,
+                          onReact: (reactionType) async {
+                            if (activeReaction == reactionType) {
+                              await SupabaseService.removeReaction(widget.postData['id']);
+                            } else {
+                              await SupabaseService.upsertReaction(widget.postData['id'], reactionType);
+                            }
+                          },
+                        ),
+                        if (reactions.isNotEmpty) ...[
                           const SizedBox(width: 4),
-                          Text("•", style: TextStyle(color: Colors.grey.withOpacity(0.5))),
-                          const SizedBox(width: 4),
-                          Text(
-                            AppUtils.formatTime(widget.postData['created_at']),
-                            style: TextStyle(fontSize: 10, color: Colors.grey.withOpacity(0.7)),
+                          GestureDetector(
+                            onTap: _showReactionsList,
+                            child: Text(
+                              '${reactions.length}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              ),
+                            ),
                           ),
                         ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  },
                 ),
-                if (widget.postData['user_id'] == SupabaseService.currentUser?.id)
-                  PopupMenuButton(
-                    icon: const Icon(Icons.more_horiz),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'edit', child: Text("Edit Caption")),
-                      const PopupMenuItem(value: 'delete', child: Text("Delete Post", style: TextStyle(color: Colors.red))),
-                    ],
-                    onSelected: (val) async {
-                      if (val == 'delete') {
-                        final confirm = await showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text("Delete Post"),
-                            content: const Text("Are you sure? This cannot be undone."),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) {
-                          await SupabaseService.deletePost(widget.postData['id'].toString());
-                        }
-                      } else if (val == 'edit') {
-                        final controller = TextEditingController(text: widget.postData['caption']);
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text("Edit Caption"),
-                            content: TextField(controller: controller, maxLines: 3),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                              TextButton(
-                                onPressed: () async {
-                                  Navigator.pop(context);
-                                  await SupabaseService.updatePost(widget.postData['id'].toString(), controller.text);
-                                },
-                                child: const Text("Save"),
+                const SizedBox(width: 8),
+                StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: SupabaseService.streamComments(widget.postData['id'].toString()),
+                  builder: (context, snapshot) {
+                    final commentsCount = snapshot.data?.length ?? 0;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Iconsax.message, color: Colors.grey),
+                          onPressed: _showComments,
+                        ),
+                        if (commentsCount > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Text(
+                              '$commentsCount',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface.withOpacity(0.7),
                               ),
-                            ],
-                          ),
-                        );
-                      }
-                    },
-                  )
-                else
-                  IconButton(
-                    icon: const Icon(Icons.more_horiz),
-                    onPressed: () {},
-                  )
-              ],
-            ),
-          ),
-          
-          // Caption ABOVE the image
-          if (caption.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: RichText(
-                text: TextSpan(
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  children: [
-                    TextSpan(
-                      text: '${widget.postData['username'] ?? 'User'} ',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    TextSpan(text: caption),
-                  ],
-                ),
-              ),
-            ),
-
-          // Image
-          GestureDetector(
-            onDoubleTap: handleDoubleTap,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Hero(
-                    tag: widget.heroTag ?? 'post_${widget.postData['id']}',
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: (_detectionResult != null && _detectionResult!['marked_image'] != null)
-                          ? Image.memory(
-                              base64Decode(_detectionResult!['marked_image']!),
-                              width: double.infinity,
-                              height: 400,
-                              fit: BoxFit.cover,
-                            )
-                          : Image.network(
-                              imageUrl,
-                              width: double.infinity,
-                              height: 400,
-                              fit: BoxFit.cover,
                             ),
-                    ),
-                  ),
-                  if (showHeartAnim)
-                    const Icon(Icons.favorite, color: Colors.white, size: 80)
-                        .animate()
-                        .scale(duration: 200.ms, begin: const Offset(0.5, 0.5), end: const Offset(1.2, 1.2))
-                        .then()
-                        .shake(duration: 300.ms)
-                        .fadeOut(delay: 400.ms),
-                ],
-              ),
-            ),
-          ),
-          
-          // Actions
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                ReactionPicker(
-                  onReact: handleReaction,
-                  currentReaction: currentReaction,
+                          ),
+                      ],
+                    );
+                  },
                 ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: showReactionsList,
-                  child: Text(
-                    "Reactions",
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      decoration: TextDecoration.underline,
-                      color: Colors.grey,
-                    ),
-                  ),
+                IconButton(
+                  icon: const Icon(Iconsax.send_2, color: Colors.grey),
+                  onPressed: _showShareSheet,
                 ),
                 const Spacer(),
-                // Comment
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: showComments,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Icon(Iconsax.message_2, size: 20, color: theme.iconTheme.color),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [Colors.purple.shade400, Colors.blue.shade400]),
+                    borderRadius: BorderRadius.circular(15),
                   ),
-                ),
-                // Share
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () {
-                    AuthGuard.executeWithAuth(context, () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => SharePostSheet(postData: widget.postData),
-                      );
-                    });
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Icon(Iconsax.send_1, size: 20, color: theme.iconTheme.color),
+                  child: PopupMenuButton<String>(
+                    icon: const Icon(Iconsax.magic_star, color: Colors.white, size: 20),
+                    onSelected: _handleAiAction,
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'all', child: Row(children: [Icon(Iconsax.flash_1, size: 18), SizedBox(width: 8), Text("Full Analysis")])),
+                      const PopupMenuItem(value: 'fake', child: Row(children: [Icon(Iconsax.shield_security, size: 18), SizedBox(width: 8), Text("AI vs Real Check")])),
+                      const PopupMenuItem(value: 'obj', child: Row(children: [Icon(Iconsax.scanner, size: 18), SizedBox(width: 8), Text("Detect Objects")])),
+                      const PopupMenuItem(value: 'caption', child: Row(children: [Icon(Iconsax.edit, size: 18), SizedBox(width: 8), Text("AI Caption")])),
+                    ],
                   ),
-                ),
-                // AI Tools compact popup
-                PopupMenuButton<String>(
-                  padding: EdgeInsets.zero,
-                  icon: Icon(
-                    Iconsax.magic_star,
-                    size: 20,
-                    color: (_detectionResult != null || _authenticityResult != null)
-                        ? Colors.purple
-                        : theme.iconTheme.color,
-                  ),
-                  onSelected: (value) {
-                    if (value == 'detect') _detectObjects();
-                    if (value == 'analyze') _analyzeAuthenticity();
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'detect', child: Text("Detect Objects")),
-                    const PopupMenuItem(value: 'analyze', child: Text("Analyze Image")),
-                  ],
-                ),
+                ).animate().shimmer(duration: 2.seconds),
               ],
             ),
           ),
 
-
-          
-          // AI Results shown inline below image
-          if (_isDetecting || _isAnalyzing)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 12),
-                  Text("AI is thinking...", style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
-                ],
-              ),
-            ),
-          
-          if (_detectionResult != null)
+          if (_aiCaption != null || _detectionResult != null || _authenticityResult != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.purple.withOpacity(0.25)),
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Iconsax.scan, size: 16, color: Colors.purple),
-                        const SizedBox(width: 6),
-                        const Text("AI Detected Objects", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+                        Icon(Iconsax.cpu, size: 16, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Text("AI AUDIT REPORT", style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2, color: theme.colorScheme.primary
+                        )),
                         const Spacer(),
                         GestureDetector(
-                          onTap: () => setState(() => _detectionResult = null),
-                          child: const Icon(Icons.close, size: 16, color: Colors.grey),
+                          onTap: () => _handleAiAction('clear'),
+                          child: Icon(Icons.close, size: 16, color: Colors.grey[600]),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: List<String>.from(_detectionResult!['objects'])
-                          .map((obj) => Chip(
-                                label: Text(obj),
-                                backgroundColor: Colors.purple.withOpacity(0.1),
-                                labelStyle: const TextStyle(fontSize: 12),
-                                padding: EdgeInsets.zero,
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          if (_authenticityResult != null)
-            (() {
-              final isReal = _authenticityResult!['is_real'] == true;
-              final double realPercent = _authenticityResult!['real_percent']?.toDouble() ?? 
-                  (isReal ? (_authenticityResult!['confidence']).toDouble() : (100 - _authenticityResult!['confidence']).toDouble());
-              final double aiPercent = _authenticityResult!['ai_percent']?.toDouble() ?? 
-                  (!isReal ? (_authenticityResult!['confidence']).toDouble() : (100 - _authenticityResult!['confidence']).toDouble());
-              
-              final int realFlex = realPercent.round().clamp(1, 100);
-              final int aiFlex = aiPercent.round().clamp(1, 100);
-              
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isReal ? Colors.green.withOpacity(0.05) : Colors.red.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: isReal ? Colors.green.withOpacity(0.25) : Colors.red.withOpacity(0.25),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            isReal ? Iconsax.verify5 : Iconsax.warning_25,
-                            color: isReal ? Colors.green : Colors.red,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _authenticityResult!['verdict'],
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isReal ? Colors.green : Colors.red,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => setState(() => _authenticityResult = null),
-                            child: const Icon(Icons.close, size: 16, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // Premium Dual Progress Bar
-                      Container(
-                        height: 10,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(5),
-                          color: Colors.grey.withOpacity(0.2),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(5),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: realFlex,
-                                child: Container(
-                                  color: Colors.green,
-                                ),
-                              ),
-                              Expanded(
-                                flex: aiFlex,
-                                child: Container(
-                                  color: Colors.red,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    const Divider(height: 20),
+                    
+                    if (_authenticityResult != null) ...[
+                      _buildDoubleConfidenceBar(
+                        realPercent: _parseScore(_authenticityResult?['real_score']),
+                        aiPercent: _parseScore(_authenticityResult?['ai_score']),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "Real: ${realPercent.toStringAsFixed(1)}%",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                          ),
-                          Text(
-                            "AI: ${aiPercent.toStringAsFixed(1)}%",
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ],
-                      ),
+                      Text("Verdict: ${_authenticityResult?['verdict']?.toString() ?? 'Unknown'}", 
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
                     ],
-                  ),
-                ),
-              );
-            }()),
 
-          // View all comments link
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-            child: GestureDetector(
-              onTap: showComments,
-              child: Text(
-                "View all comments",
-                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
-              ),
+                    if (_aiCaption != null) ...[
+                      Text("Description: ", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.primary)),
+                      Text(_aiCaption ?? "", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 12),
+                    ],
+
+                    if (_detectionResult != null)
+                      Wrap(
+                        spacing: 6, runSpacing: 6,
+                        children: (_detectionResult!['objects'] as List? ?? []).map((o) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          child: Text("#${o.toString()}", style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+                        )).toList(),
+                      ),
+                  ],
+                ),
+              ).animate().fadeIn().scale(alignment: Alignment.bottomCenter),
             ),
-          ),
-          const SizedBox(height: 16),
+          
+          const SizedBox(height: 12),
         ],
       ),
     );
   }
+
+  Widget _buildDoubleConfidenceBar({required double realPercent, required double aiPercent}) {
+    return Column(
+      children: [
+        _singleBar("Real Image", realPercent, Colors.green),
+        const SizedBox(height: 8),
+        _singleBar("AI Generated", aiPercent, Colors.orange),
+      ],
+    );
+  }
+
+  Widget _singleBar(String label, double percent, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            Text("${percent.toStringAsFixed(1)}%", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: (percent / 100).clamp(0.0, 1.0),
+            backgroundColor: color.withOpacity(0.1),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            minHeight: 8,
+          ),
+        ),
+      ],
+    );
+  }
 }
-
-

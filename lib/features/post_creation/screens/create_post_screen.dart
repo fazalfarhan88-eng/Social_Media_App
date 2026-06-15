@@ -1,10 +1,9 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:social_media_app/core/services/supabase_service.dart';
 import 'package:social_media_app/core/services/api_service.dart';
@@ -52,12 +51,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               onPressed: _isPosting ? null : () async {
                 setState(() => _isPosting = true);
                 try {
-                  if (kIsWeb) {
                   final bytes = await _selectedImage!.readAsBytes();
                   await SupabaseService.createPostFromBytes(bytes, _captionController.text);
-                } else {
-                  await SupabaseService.createPost(_selectedImage!.path, _captionController.text);
-                }
                   if (mounted) Navigator.pop(context);
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
@@ -93,9 +88,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   child: _selectedImage != null
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(28),
-                          child: kIsWeb 
-                              ? Image.network(_selectedImage!.path, fit: BoxFit.cover)
-                              : Image.file(File(_selectedImage!.path), fit: BoxFit.cover),
+                          child: FutureBuilder<Uint8List>(
+                              future: _selectedImage!.readAsBytes(),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData) {
+                                  return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                                }
+                                return const Center(child: CircularProgressIndicator());
+                              },
+                            ),
                         )
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -122,7 +123,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     onPressed: _isGeneratingCaption ? null : () async {
                       setState(() => _isGeneratingCaption = true);
                       try {
-                        final result = await ApiService.generateCaption(_selectedImage!.path);
+                        final imageBytes = await _selectedImage!.readAsBytes();
+                        final result = await ApiService.generateCaption(imageBytes);
                         if (mounted) {
                           _captionController.text = result['caption'] ?? '';
                         }

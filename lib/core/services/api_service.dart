@@ -1,85 +1,58 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Replace this URL with your Google Colab Cloudflare URL (e.g., 'https://xxx.trycloudflare.com')
+  // Replace this URL with your latest Google Colab Ngrok URL
   static const String baseUrl = 'https://eatable-monument-gone.ngrok-free.dev';
   static const String apiKey = 'social_media_app_2024_secure_key';
 
-  static Future<Map<String, dynamic>> processAll(String imagePath) async {
-    final uri = Uri.parse('$baseUrl/process_all');
-    final request = http.MultipartRequest('POST', uri);
-    
-    request.headers['X-API-Key'] = apiKey;
-    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-    final response = await request.send();
-
-    if (response.statusCode == 200) {
-      final responseData = await response.stream.bytesToString();
-      return json.decode(responseData);
-    } else {
-      throw Exception('Failed to process image: ${response.statusCode}');
-    }
-  }
-
-  static Future<Map<String, dynamic>> detectObjects(String imagePath) async {
-    final uri = Uri.parse('$baseUrl/detect_objects');
-    final request = http.MultipartRequest('POST', uri);
-    
-    request.headers['X-API-Key'] = apiKey;
-    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-
-    final response = await request.send();
-
-    if (response.statusCode == 200) {
-      final responseData = await response.stream.bytesToString();
-      return json.decode(responseData);
-    } else {
-      throw Exception('Failed to detect objects: ${response.statusCode}');
-    }
-  }
-
-  static Future<Map<String, dynamic>> generateCaption(String imagePath) async {
-    final uri = Uri.parse('$baseUrl/generate_caption');
-    final request = http.MultipartRequest('POST', uri);
-    
-    request.headers['X-API-Key'] = apiKey;
-    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-
-    final response = await request.send();
-
-    if (response.statusCode == 200) {
-      final responseData = await response.stream.bytesToString();
-      return json.decode(responseData);
-    } else {
-      throw Exception('Failed to generate caption: ${response.statusCode}');
-    }
-  }
-
-  static Future<Map<String, dynamic>> detectDeepfake(String imagePath) async {
-    final uri = Uri.parse('$baseUrl/detect_deepfake');
-    final request = http.MultipartRequest('POST', uri);
-    
-    request.headers['X-API-Key'] = apiKey;
-    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-
-    final response = await request.send();
-
-    if (response.statusCode == 200) {
-      final responseData = await response.stream.bytesToString();
-      return json.decode(responseData);
-    } else {
-      throw Exception('Failed to detect deepfake: ${response.statusCode}');
-    }
-  }
-
-  static Future<bool> checkHealth() async {
+  /// Internal helper to send image and return response
+  /// Uses Uint8List for full cross-platform compatibility (Web, Android, iOS)
+  static Future<Map<String, dynamic>> _postImage(String endpoint, Uint8List imageBytes) async {
     try {
-      final uri = Uri.parse('$baseUrl/health');
-      final response = await http.get(uri);
-      return response.statusCode == 200;
+      final uri = Uri.parse('$baseUrl/$endpoint');
+      final request = http.MultipartRequest('POST', uri);
+
+      request.headers['X-API-Key'] = apiKey;
+      request.headers['Accept'] = 'application/json';
+      
+      request.files.add(http.MultipartFile.fromBytes(
+        'image',
+        imageBytes,
+        filename: 'upload.jpg',
+      ));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw 'Server Error: ${response.statusCode} - ${response.body}';
+      }
     } catch (e) {
-      return false;
+      throw 'AI Connection Error: $e';
     }
+  }
+
+  /// 1. Object Detection (Returns only 'objects' and 'marked_image')
+  static Future<Map<String, dynamic>> detectObjects(Uint8List imageBytes) async {
+    return await _postImage('detect_objects', imageBytes);
+  }
+
+  /// 2. Image Captioning (Returns only 'caption')
+  static Future<Map<String, dynamic>> generateCaption(Uint8List imageBytes) async {
+    return await _postImage('generate_caption', imageBytes);
+  }
+
+  /// 3. Deepfake Detection (Returns only authenticity results)
+  static Future<Map<String, dynamic>> detectDeepfake(Uint8List imageBytes) async {
+    return await _postImage('detect_deepfake', imageBytes);
+  }
+
+  /// 4. Complete Analysis (Returns everything combined)
+  static Future<Map<String, dynamic>> processAll(Uint8List imageBytes) async {
+    return await _postImage('process_all', imageBytes);
   }
 }

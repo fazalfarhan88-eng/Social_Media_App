@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static const primaryColor = Color(0xFF6366F1); // Modern Indigo
   static const secondaryColor = Color(0xFFA855F7); // Modern Purple
   static const accentColor = Color(0xFFEC4899); // Pink Accent
   
   static const darkSurface = Color(0xFF0F172A); // Deep Slate
   static const darkBackground = Color(0xFF020617); // Near Black
   
-  static ThemeData get lightTheme {
+  static ThemeData lightTheme(Color primaryColor) {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -54,7 +53,7 @@ class AppTheme {
     );
   }
 
-  static ThemeData get darkTheme {
+  static ThemeData darkTheme(Color primaryColor) {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -66,7 +65,6 @@ class AppTheme {
         primary: primaryColor,
         secondary: secondaryColor,
         tertiary: accentColor,
-        background: darkBackground,
       ),
       scaffoldBackgroundColor: darkBackground,
       appBarTheme: AppBarTheme(

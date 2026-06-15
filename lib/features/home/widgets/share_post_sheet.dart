@@ -25,8 +25,8 @@ class _SharePostSheetState extends State<SharePostSheet> {
     setState(() => _isSharing = true);
     try {
       await SupabaseService.sharePostToFeed(
-        originalPostId: widget.postData['id'].toString(),
-        originalUserId: widget.postData['user_id'].toString(),
+        originalPostId: widget.postData['id'],
+        originalUserId: widget.postData['user_id']?.toString() ?? '',
         caption: _captionController.text.trim(),
       );
       if (mounted) {
@@ -63,7 +63,7 @@ class _SharePostSheetState extends State<SharePostSheet> {
     setState(() => _isSharing = true);
     try {
       await SupabaseService.sharePostAsStatus(
-        originalPostId: widget.postData['id'].toString(),
+        originalPostId: widget.postData['id'],
         imageUrl: widget.postData['image_url'],
         caption: widget.postData['caption'] ?? '',
       );

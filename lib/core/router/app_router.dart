@@ -25,7 +25,9 @@ class AppRouter {
   
   static final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/splash',
+    // Changed initialLocation to /home to bypass the artificial Splash Screen delay
+    // and prevent the "double icon" flicker between native and Flutter splash.
+    initialLocation: '/home',
     redirect: (context, state) {
       final isLoggedIn = SupabaseService.currentUser != null;
       final isGoingToLogin = state.matchedLocation == '/' || state.matchedLocation == '/register';
